@@ -1,2 +1,2 @@
 # video_stab_hls
-Video stabilization stabilizer
+Video stabilization accel
