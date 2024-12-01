@@ -5,7 +5,12 @@
 #include "imgproc/xf_custom_convolution.hpp"
 #include <common/xf_structs.hpp>
 #include <common/xf_utility.hpp>
+#include "video/xf_dense_npyr_optical_flow.hpp"
 
+
+
+
+//definitions
 #define TYPE XF_8UC1
 #define NPC XF_NPPC8
 #define XF_CV_DEPTH_NPC 2
@@ -22,6 +27,17 @@
 #define FILTER_WIDTH 3
 #define BITS_DATA 64
 using DataT = ap_uint<BITS_DATA>;
+
+
+//optical flow config
+#define INPUT_PTR_WIDTH_OF 32
+#define OUTPUT_PTR_WIDTH_OF 32
+
+static constexpr int _XF_DEPTH_IN =
+    (HEIGHT_MAX * WIDTH_MAX * (XF_PIXELWIDTH(XF_8UC1, XF_NPPC1)) / 8) / (INPUT_PTR_WIDTH_OF / 8);
+static constexpr int _XF_DEPTH_OUT =
+    (HEIGHT_MAX * WIDTH_MAX * (XF_PIXELWIDTH(XF_32FC1, XF_NPPC1)) / 32) / (OUTPUT_PTR_WIDTH_OF / 32);
+
 
 
 short int EROSION_KERNEL[FILTER_WIDTH * FILTER_WIDTH] = {
@@ -58,6 +74,17 @@ mem_wr:
     }
 }
 
+
+static void optical_flow(ap_uint<INPUT_PTR_WIDTH_OF>* img_curr,
+                        ap_uint<INPUT_PTR_WIDTH_OF>* img_prev,
+                        ap_uint<OUTPUT_PTR_WIDTH_OF>* img_outx,
+                        ap_uint<OUTPUT_PTR_WIDTH_OF>* img_outy,
+                            int rows,
+                            int cols) {
+    
+
+
+}
 
 
 extern "C"{
