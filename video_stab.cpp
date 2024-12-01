@@ -22,7 +22,7 @@
 #define FILTER_WIDTH 3
 #define BITS_DATA 64
 using DataT = ap_uint<BITS_DATA>;
-
+using DataStrm = ap_axiu<BITS_DATA,0,0,0>;
 
 short int EROSION_KERNEL[FILTER_WIDTH * FILTER_WIDTH] = {
     0, -1, 0, -1, 5, -1, 0, -1, 0};
@@ -63,27 +63,34 @@ mem_wr:
 extern "C"{
 
 
-    void video_stab(DataT* in, DataT* out, int width, int height){
+ void video_stab(DataT* in, DataT* out, int width, int height) {
 #pragma HLS INTERFACE m_axi port = in bundle = gmem0
 #pragma HLS INTERFACE m_axi port = out bundle = gmem1
-#pragma HLS INTERFACE s_axilite register port=width
-#pragma HLS INTERFACE s_axilite register port=height
-#pragma HLS INTERFACE s_axilite  port=return
+#pragma HLS INTERFACE s_axilite register port = width
+#pragma HLS INTERFACE s_axilite register port = height
+#pragma HLS INTERFACE s_axilite port = return
 
+        // Streams para el flujo de datos
+        hls::stream<DataT> inputStream("inputStream");
+        hls::stream<DataT> outputStream("outputStream");
+#pragma HLS STREAM depth=1024 variable=inputStream
+#pragma HLS STREAM depth=1024 variable=outputStream
 
-  xf::cv::Mat<TYPE, HEIGHT_MAX, WIDTH_MAX, NPC, XF_CV_DEPTH_NPC> imgInput(height, width);
-  xf::cv::Mat<TYPE, HEIGHT_MAX, WIDTH_MAX, NPC, XF_CV_DEPTH_NPC> imgOutput(height, width);
+        // Matrices para procesamiento de imágenes
+        xf::cv::Mat<TYPE, HEIGHT_MAX, WIDTH_MAX, NPC, XF_CV_DEPTH_NPC> imgInput(height, width);
+        xf::cv::Mat<TYPE, HEIGHT_MAX, WIDTH_MAX, NPC, XF_CV_DEPTH_NPC> imgOutput(height, width);
 
 #pragma HLS dataflow
-  // dataflow pragma instruct compiler to run following three APIs in parallel
-  xf::cv::Array2xfMat<BITS_DATA, TYPE, HEIGHT_MAX, WIDTH_MAX, NPC, XF_CV_DEPTH_NPC>(in, imgInput);
-  xf::cv::filter2D<XF_BORDER_REPLICATE, FILTER_WIDTH, FILTER_WIDTH, TYPE, TYPE, HEIGHT_MAX, WIDTH_MAX, NPC, XF_CV_DEPTH_NPC, XF_CV_DEPTH_NPC>(
-    imgInput, imgOutput, EROSION_KERNEL, 0);
-  xf::cv::xfMat2Array<BITS_DATA, TYPE, HEIGHT_MAX, WIDTH_MAX, NPC, XF_CV_DEPTH_NPC>(imgOutput, out);
+        // 1. Cargar datos en el stream
+        loadBuffer(in, inputStream, (width * height) / (BITS_DATA / 8));
 
-        
+         xf::cv::Array2xfMat<BITS_DATA, TYPE, HEIGHT_MAX, WIDTH_MAX, NPC, XF_CV_DEPTH_NPC>(inputStream.read(), imgInput);
+         xf::cv::filter2D<XF_BORDER_REPLICATE, FILTER_WIDTH, FILTER_WIDTH, TYPE, TYPE, HEIGHT_MAX, WIDTH_MAX, NPC, XF_CV_DEPTH_NPC, XF_CV_DEPTH_NPC>(
+         imgInput, imgOutput, EROSION_KERNEL, 0);
+        xf::cv::xfMat2axiStrm<BITS_DATA, TYPE, HEIGHT_MAX, WIDTH_MAX, NPC, XF_CV_DEPTH_NPC>(imgOutput, outputStream);
+
+        // 5. Escribir resultados del stream a la memoria
+        write_result(out, outputStream, (width * height) / (BITS_DATA / 8));
     }
-
 }
-
 
