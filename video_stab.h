@@ -12,6 +12,8 @@ static constexpr int kDataInt = 6;
 static constexpr int kPackets = kBusWidth / kDataWidth;
 static constexpr int kShiftData = 2; // Packets 4
 
+#define INPUT_IMAGE "img1.png"
+
 
 #define BITS_DATA 64
 using DataT = ap_uint<BITS_DATA>;

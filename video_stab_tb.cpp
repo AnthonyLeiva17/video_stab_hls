@@ -1,11 +1,13 @@
 #include <iostream>
 #include <stdint.h>
 #include <hls_stream.h>
+#include <common/xf_structs.hpp>
+#include <common/xf_utility.hpp>
 #include <cassert>
 #include "video_stab.h" // Archivo que contiene la función `video_stab`
 
-#define WIDTH 1280
-#define HEIGHT 720
+#define WIDTH 1920
+#define HEIGHT 1080
 #define BUFFER_SIZE (WIDTH * HEIGHT / (BITS_DATA / 8))
 
 
@@ -20,6 +22,8 @@ int main() {
     DataT* inBuffer = new DataT[bufferSize];
     DataT* outBuffer = new DataT[bufferSize];
     
+    xf::cv::Mat<1, HEIGHT, WIDTH, XF_NPPC1> imgread (364,680,'./img1.png');
+
     // Inicializar los datos de entrada con valores aleatorios
     srand(42); // Semilla para reproducibilidad
     for (int i = 0; i < bufferSize; i++) {
