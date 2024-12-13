@@ -21,3 +21,4 @@
 .vitisWorkspace.json
 .vscode/
 *.log
+/workVideoStab
