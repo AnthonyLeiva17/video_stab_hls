@@ -1,31 +1,17 @@
 #include <stdint.h>
-
+#include "video_stab.h"
 #include <hls_stream.h>
-
-#include "imgproc/xf_custom_convolution.hpp"
 #include <common/xf_structs.hpp>
 #include <common/xf_utility.hpp>
-
-#define TYPE XF_8UC1
-#define NPC XF_NPPC8
-#define XF_CV_DEPTH_NPC 2
-
-#define HEIGHT_MAX 2160
-#define WIDTH_MAX 3840
-
-//Warp 
-#define NUM_STORE_ROWS 100
-#define START_PROC 50
-#define TRANSFORM_TYPE 1
-#define INTERPOLATION 1
-
-#define FILTER_WIDTH 3
-#define BITS_DATA 64
-using DataT = ap_uint<BITS_DATA>;
+#include "common/xf_common.hpp"
+#include "imgproc/xf_cvt_color.hpp"
+#include "ap_int.h"
+#include "video/xf_dense_npyr_optical_flow.hpp"
 
 
-short int EROSION_KERNEL[FILTER_WIDTH * FILTER_WIDTH] = {
-    0, -1, 0, -1, 5, -1, 0, -1, 0};
+
+
+
 
 
 float transformation_matrix[9] = {
@@ -34,7 +20,7 @@ float transformation_matrix[9] = {
   0, 0, 1
 };    
 
-
+/*
 static void loadBuffer(DataT* in, hls::stream<DataT>& inBuffer,
                        int bufferSize){
       mem_rd:
@@ -56,34 +42,72 @@ mem_wr:
         // Blocking read command to inStream
         out[i] = outStream.read();
     }
+}*/
+
+
+
+
+void cvtcolor_rgb2gray(ap_uint<32 * NPC1>* imgInput, ap_uint<8 * NPC1>* imgOutput) {
+    static constexpr int __XF_DEPTH_INP_0 = ((HEIGHT) * (WIDTH) * (XF_PIXELWIDTH(XF_8UC3, NPC1))) / (32 * NPC1);
+    static constexpr int __XF_DEPTH_OUT_0 = ((HEIGHT) * (WIDTH) * (XF_PIXELWIDTH(XF_8UC1, NPC1))) / (8 * NPC1);
+
+// clang-format off
+    #pragma HLS INTERFACE m_axi      port=imgInput    offset=slave  bundle=gmem_in0  depth=__XF_DEPTH_INP_0
+    #pragma HLS INTERFACE m_axi      port=imgOutput   offset=slave  bundle=gmem_out0 depth=__XF_DEPTH_OUT_0
+    #pragma HLS INTERFACE s_axilite  port=return
+    // clang-format on
+
+    xf::cv::Mat<XF_8UC3, HEIGHT, WIDTH, NPC1, XF_CV_DEPTH_IN> _imgInput(HEIGHT, WIDTH);
+    xf::cv::Mat<XF_8UC1, HEIGHT, WIDTH, NPC1, XF_CV_DEPTH_OUT> _imgOutput(HEIGHT, WIDTH);
+
+// clang-format off
+    #pragma HLS DATAFLOW
+    // clang-format on
+
+    xf::cv::Array2xfMat<32 * NPC1, XF_8UC3, HEIGHT, WIDTH, NPC1, XF_CV_DEPTH_IN>(imgInput, _imgInput);
+
+    xf::cv::rgb2gray<XF_8UC3, XF_8UC1, HEIGHT, WIDTH, NPC1, XF_CV_DEPTH_IN, XF_CV_DEPTH_OUT>(_imgInput, _imgOutput);
+
+    xf::cv::xfMat2Array<8 * NPC1, XF_8UC1, HEIGHT, WIDTH, NPC1, XF_CV_DEPTH_OUT>(_imgOutput, imgOutput);
 }
 
 
+static constexpr int __XF_DEPTH_INP_0 = ((HEIGHT) * (WIDTH) * (XF_PIXELWIDTH(XF_8UC3, NPC1))) / (32 * NPC1);
+static constexpr int __XF_DEPTH_OUT_0 = ((HEIGHT) * (WIDTH) * (XF_PIXELWIDTH(XF_8UC1, NPC1))) / (8 * NPC1);
 
 extern "C"{
 
 
-    void video_stab(DataT* in, DataT* out, int width, int height){
-#pragma HLS INTERFACE m_axi port = in bundle = gmem0
-#pragma HLS INTERFACE m_axi port = out bundle = gmem1
-#pragma HLS INTERFACE s_axilite register port=width
-#pragma HLS INTERFACE s_axilite register port=height
+void video_stab(ap_uint<32 * NPC1>* imgInput, ap_uint<8 * NPC1>* imgOutput){
+
+#pragma HLS INTERFACE m_axi      port=imgInput    offset=slave  bundle=gmem_in0  depth=__XF_DEPTH_INP_0
+#pragma HLS INTERFACE m_axi      port=imgOutput   offset=slave  bundle=gmem_out0 depth=__XF_DEPTH_OUT_0
 #pragma HLS INTERFACE s_axilite  port=return
 
 
-  xf::cv::Mat<TYPE, HEIGHT_MAX, WIDTH_MAX, NPC, XF_CV_DEPTH_NPC> imgInput(height, width);
-  xf::cv::Mat<TYPE, HEIGHT_MAX, WIDTH_MAX, NPC, XF_CV_DEPTH_NPC> imgOutput(height, width);
+
+
+  xf::cv::Mat<XF_8UC3, HEIGHT, WIDTH, NPC1, XF_CV_DEPTH_IN> imgInput1(HEIGHT, WIDTH);
+  xf::cv::Mat<XF_8UC1, HEIGHT, WIDTH, NPC1, XF_CV_DEPTH_OUT> ImgOutput1(HEIGHT, WIDTH);
+
+
+  xf::cv::Mat<TYPE, HEIGHT_MAX, WIDTH_MAX, NPC, XF_CV_DEPTH_NPC> imgInput2(HEIGHT, WIDTH);
+  xf::cv::Mat<TYPE, HEIGHT_MAX, WIDTH_MAX, NPC, XF_CV_DEPTH_NPC> imgOutput2(HEIGHT, WIDTH);
+
+  xf::cv::Mat<TYPE, HEIGHT_MAX, WIDTH_MAX, NPC, XF_CV_DEPTH_NPC> imgInput3(HEIGHT, WIDTH);
+  xf::cv::Mat<TYPE, HEIGHT_MAX, WIDTH_MAX, NPC, XF_CV_DEPTH_NPC> imgOutput3(HEIGHT, WIDTH);
+
+  xf::cv::Mat<TYPE, HEIGHT_MAX, WIDTH_MAX, NPC, XF_CV_DEPTH_NPC> imgInput4(HEIGHT, WIDTH);
+  xf::cv::Mat<TYPE, HEIGHT_MAX, WIDTH_MAX, NPC, XF_CV_DEPTH_NPC> imgOutput5(HEIGHT, WIDTH);
 
 #pragma HLS dataflow
   // dataflow pragma instruct compiler to run following three APIs in parallel
-  xf::cv::Array2xfMat<BITS_DATA, TYPE, HEIGHT_MAX, WIDTH_MAX, NPC, XF_CV_DEPTH_NPC>(in, imgInput);
-  xf::cv::filter2D<XF_BORDER_REPLICATE, FILTER_WIDTH, FILTER_WIDTH, TYPE, TYPE, HEIGHT_MAX, WIDTH_MAX, NPC, XF_CV_DEPTH_NPC, XF_CV_DEPTH_NPC>(
-    imgInput, imgOutput, EROSION_KERNEL, 0);
-  xf::cv::xfMat2Array<BITS_DATA, TYPE, HEIGHT_MAX, WIDTH_MAX, NPC, XF_CV_DEPTH_NPC>(imgOutput, out);
+  xf::cv::Array2xfMat<32 * NPC1, XF_8UC3, HEIGHT, WIDTH, NPC1, XF_CV_DEPTH_IN>(imgInput, imgInput1);
+  xf::cv::rgb2gray<XF_8UC3, XF_8UC1, HEIGHT, WIDTH, NPC1, XF_CV_DEPTH_IN, XF_CV_DEPTH_OUT>(imgInput1, ImgOutput1);
+  xf::cv::xfMat2Array<8 * NPC1, XF_8UC1, HEIGHT, WIDTH, NPC1, XF_CV_DEPTH_OUT>(ImgOutput1, imgOutput);
 
+    
         
     }
 
 }
-
-
