@@ -1,51 +1,104 @@
-#include <iostream>
-#include <stdint.h>
-#include <hls_stream.h>
+#include <stdio.h>
+#include <ap_int.h>            // Tipos de datos específicos de HLS
+#include <hls_stream.h>        // Para la definición de streams de datos
+#include "common/xf_utility.hpp"
 #include <common/xf_structs.hpp>
-#include <common/xf_utility.hpp>
-#include <cassert>
-#include "video_stab.h" // Archivo que contiene la función `video_stab`
+#include <ap_axi_sdata.h>
+#include "video_stab.h"
 
-#define WIDTH 1920
-#define HEIGHT 1080
-#define BUFFER_SIZE (WIDTH * HEIGHT / (BITS_DATA / 8))
+#include <iostream>
+#include <fstream>
+#include <sstream>
+#include <vector>
+// Definir tipo de matriz XF
+
+
+// Función para leer datos del archivo y llenar el buffer de entrada
+void read_txt_and_prepare_input(const char* filename, DataT* imgInput) {
+    std::ifstream infile(filename);
+    if (!infile) {
+        std::cerr << "Error al abrir el archivo: " << filename << std::endl;
+        return;
+    }
+    printf("Archivo cargado\n");
+
+    // Variables temporales para almacenar los valores RGB
+    unsigned int b, g, r;
+
+    // Llenar el buffer de entrada
+    for (int i = 0; i < HEIGHT * WIDTH; i++) {
+        infile >> b >> g >> r; // Leer valores BGR
+        ap_uint<32 * NPC1> pixel_pack = 0;
+
+        // Empaquetar los valores RGB en un ap_uint<32 * NPC1>
+        pixel_pack.range(7, 0) = b;   // Azul   
+        pixel_pack.range(15, 8) = g;  // Verde
+        pixel_pack.range(23, 16) = r; // Rojo
+        // Si es necesario, agregar un valor extra para Alpha (por ejemplo, 255 para opacidad total)
+        pixel_pack.range(31, 24) = 0; // Alpha (opacidad total)
+
+        imgInput[i] = pixel_pack; // Asignar al buffer
+    }
+
+    infile.close();
+}
+
+
+// Función para escribir los resultados en un archivo de salida
+void write_output_to_txt(const char* filename, ap_uint<8 * NPC1>* imgOutput) {
+    std::ofstream outfile(filename);
+    if (!outfile) {
+        std::cerr << "Error al abrir el archivo de salida: " << filename << std::endl;
+        return;
+    }
+
+    // Leer el buffer de salida y escribir los valores en el archivo
+    for (int i = 0; i < (HEIGHT-1) * WIDTH; i++) {
+        ap_uint<8 * NPC1> pixel = imgOutput[i];
+        unsigned int gray = pixel.to_uint();  // Convertir a entero para escribir
+        outfile << gray << " "; // Escribir el valor de intensidad (grayscale)
+        if ((i + 1) % WIDTH == 0) {
+            outfile << std::endl; // Nueva línea para cada fila
+        }
+    }
+
+    outfile.close();
+}
 
 
 
+
+void print_imgInput(DataT* imgInput) {
+    for (int i = 0; i < HEIGHT * WIDTH; i++) {
+        // Desempaquetar los valores RGB
+        unsigned int b = imgInput[i].range(23, 16);
+        unsigned int g = imgInput[i].range(15, 8);
+        unsigned int r = imgInput[i].range(7, 0);
+
+        std::cout << "Pixel " << i << " -> R: " << r << ", G: " << g << ", B: " << b << std::endl;
+    }
+}
+
+// Función principal
 int main() {
-    // Configuración inicial
-    int width = WIDTH;
-    int height = HEIGHT;
-    int bufferSize = (width * height) / (BITS_DATA / 8); // Tamaño del buffer
+    // Buffers de entrada y salida
+    DataT imgInput[HEIGHT * WIDTH]; // Buffer de entrada con 32 bits por píxel
+    ap_uint<8 * NPC1> imgOutput[HEIGHT * WIDTH-1]; // Buffer de salida con 8 bits por píxel
 
-    // Reservar memoria para datos de entrada y salida
-    DataT* inBuffer = new DataT[bufferSize];
-    DataT* outBuffer = new DataT[bufferSize];
+    // Leer datos desde el archivo .txt
+    read_txt_and_prepare_input("img1_data.txt", imgInput);
     
-    xf::cv::Mat<1, HEIGHT, WIDTH, XF_NPPC1> imgread (364,680,'./img1.png');
+    // Imprimir los valores de imgInput para verificar
+    print_imgInput(imgInput);
 
-    // Inicializar los datos de entrada con valores aleatorios
-    srand(42); // Semilla para reproducibilidad
-    for (int i = 0; i < bufferSize; i++) {
-        inBuffer[i] = rand() % 256; // Valores de 8 bits (0-255)
-    }
+    // Llamar a la función de estabilización (acelerador)
+    printf("Buffer asignado\n");
+    video_stab(imgInput, imgOutput);
+    printf("video estabilizado\n");
 
-    // Inicializar el buffer de salida con ceros
-    memset(outBuffer, 0, bufferSize * sizeof(DataT));
-
-    // Llamar al kernel
-    video_stab(inBuffer, outBuffer, width, height);
-
-    // Verificar y mostrar resultados
-    std::cout << "Resultados del filtro:" << std::endl;
-    for (int i = 0; i < 10; i++) { // Mostrar los primeros 10 resultados
-        std::cout << "Pixel " << i << ": Entrada = " << inBuffer[i]
-                  << ", Salida = " << outBuffer[i] << std::endl;
-    }
-
-    // Liberar memoria
-    delete[] inBuffer;
-    delete[] outBuffer;
+    // Escribir los resultados en un archivo .txt
+    write_output_to_txt("../../../../output_data.txt", imgOutput);
+    printf("Archivo escrito\n");
 
     return 0;
 }
